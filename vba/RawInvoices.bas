@@ -351,8 +351,9 @@ Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workboo
     If FileExists(invoicePath) Then AddNote note, "replaced the existing " & invoiceFile
     wbInv.SaveAs Filename:=invoicePath, FileFormat:=xlOpenXMLWorkbook
 
-    ' ----- 6. Copy the tab to the end of the Master List -----
+    ' ----- 6. Copy the tab to the end of the Master List, with an orange tab -----
     ws.Copy After:=master.Sheets(master.Sheets.Count)
+    master.Worksheets(tabName).Tab.Color = ORANGE
 
     ' ----- 7. Add the data rows to the bottom of the Consumables table -----
     AppendToConsumables consLo, lo, lastCol, tabName
@@ -593,14 +594,18 @@ End Function
 ' and returns how many cells it changed. Only those cells are rewritten, so any other
 ' text is left exactly as it was.
 Private Function ConvertTextNumbers(ByVal rng As Range) As Long
-    Dim v As Variant, r As Long, c As Long, n As Double
+    Dim v As Variant, r As Long, c As Long, n As Double, zeroFormat As String
     v = ValuesOf(rng)
     For r = 1 To UBound(v, 1)
         For c = 1 To UBound(v, 2)
             If VarType(v(r, c)) = vbString Then
-                If TextToNumber(CStr(v(r, c)), n) Then
+                If TextToNumber(CStr(v(r, c)), n, zeroFormat) Then
                     With rng.Cells(r, c)
-                        If .NumberFormat = "@" Then .NumberFormat = "General"   ' Text format keeps text
+                        If Len(zeroFormat) > 0 Then
+                            .NumberFormat = zeroFormat              ' "00123" keeps showing its zeros
+                        ElseIf .NumberFormat = "@" Then
+                            .NumberFormat = "General"               ' Text format would keep it text
+                        End If
                         .Value = n
                     End With
                     ConvertTextNumbers = ConvertTextNumbers + 1
@@ -611,14 +616,24 @@ Private Function ConvertTextNumbers(ByVal rng As Range) As Long
 End Function
 
 ' True when s is a number written as text, and puts the number in result. Handles
-' spaces, a $ sign, commas between thousands, and negatives written as -12.50, 12.50-
-' or (12.50). Stays text: leading zeros like "00123" (codes, not amounts), more than
-' 15 digits (too long for Excel to hold exactly), dates, percents and anything else.
-Private Function TextToNumber(ByVal s As String, ByRef result As Double) As Boolean
+' spaces (also tabs, line breaks and invisible spaces), a $ sign, commas between
+' thousands, and negatives written as -12.50, 12.50- or (12.50). Whole numbers with
+' leading zeros, like "00123", become numbers too; zeroFormat is then set (to "00000")
+' so they still show their zeros. Stays text: more than 15 digits (too long for Excel
+' to hold exactly), dates, percents and anything else.
+Private Function TextToNumber(ByVal s As String, ByRef result As Double, _
+                              ByRef zeroFormat As String) As Boolean
     Dim negative As Boolean, intPart As String, fracPart As String, dotPos As Long
     Dim groups As Variant, g As Long
 
-    s = Trim$(Replace(s, Chr(160), " "))                    ' non-breaking spaces too
+    zeroFormat = ""
+    s = Replace(s, vbTab, " ")
+    s = Replace(s, vbCr, " ")
+    s = Replace(s, vbLf, " ")
+    s = Replace(s, Chr(160), " ")                           ' non-breaking space
+    s = Replace(s, ChrW(8203), "")                          ' zero-width space
+    s = Replace(s, ChrW(65279), "")                         ' byte-order mark
+    s = Trim$(s)
     If Len(s) - Len(Replace(s, "$", "")) > 1 Then Exit Function
     s = Trim$(Replace(s, "$", ""))
     If Len(s) >= 2 And Left$(s, 1) = "(" And Right$(s, 1) = ")" Then           ' (12.50)
@@ -653,8 +668,11 @@ Private Function TextToNumber(ByVal s As String, ByRef result As Double) As Bool
         If Not IsAllDigits(intPart) Then Exit Function
     End If
     If Len(intPart) + Len(fracPart) = 0 Then Exit Function
-    If Len(intPart) > 1 And Left$(intPart, 1) = "0" Then Exit Function     ' "00123" is a code
     If Len(intPart) + Len(fracPart) > 15 Then Exit Function                 ' too long for Excel
+    If Len(intPart) > 1 And Left$(intPart, 1) = "0" And Len(fracPart) = 0 And dotPos = 0 _
+       And Not negative And InStr(s, ",") = 0 Then
+        zeroFormat = String$(Len(intPart), "0")             ' "00123" -> 123 shown as 00123
+    End If
 
     result = Val(intPart & "." & fracPart)                  ' Val always reads "." as the decimal point
     If negative Then result = -result
@@ -846,6 +864,10 @@ Private Sub AppendToConsumables(ByVal consLo As ListObject, ByVal invLo As ListO
         Paste:=xlPasteValuesAndNumberFormats
     Application.CutCopyMode = False
     consLo.DataBodyRange.Cells(firstNew, CONS_TAB_NAME_COLUMN).Resize(nAdd, 1).Value = tabName
+
+    ' If any of those Consumables columns are formatted as Text, the values above land as
+    ' text (including the tab name). Turn them into real numbers.
+    ConvertTextNumbers consLo.DataBodyRange.Cells(firstNew, CONS_TAB_NAME_COLUMN).Resize(nAdd, nCols + 1)
 End Sub
 
 ' Checks every RAW file before anything is changed. Returns one line per duplicate

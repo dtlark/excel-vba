@@ -20,11 +20,12 @@ For each Excel file in the RAW folder, the `ProcessRawInvoices` macro:
    Formats SHIPPED and ORDERED as **Number** (2 decimals), and PRICE/UNIT, TAX,
    FREIGHT, AMOUNT, Check Number, V and that subtotal as **Accounting**.
 4. Saves it as `Invoice <Tab Name> (<Postfix>).xlsx` in the Invoice folder.
-5. Copies the tab to the end of the Master List.
+5. Copies the tab to the end of the Master List and colors the tab orange.
 6. Adds the table's data rows to the bottom of the Master List's **Consumables**
    table (on the Consolidated Consumables tab). Only the vendor's columns go in,
    not Check Number, the blank column or V. The tab name goes in the table's 4th
-   column, and the vendor's columns start in its 5th.
+   column, and the vendor's columns start in its 5th. Numbers stay numbers there
+   too, even if a Consumables column is formatted as Text.
 7. Moves the RAW file into the Done folder.
 
 You only need Excel open with the macro workbook. The macro opens and closes the
@@ -129,9 +130,10 @@ macro adds that row at the bottom the next time it runs.
   after the tab name, there are no parentheses: `123456.xlsx` becomes
   `Invoice 123456.xlsx`.
 - **Numbers stored as text:** text like `12.50`, `1,234`, `$12.50`, `-12.50`,
-  `12.50-` or `(12.50)` becomes a real number, in every column. Some text is
-  left alone on purpose: values with leading zeros like `00123` (usually codes,
-  and converting would drop the zeros), anything over 15 digits (too long for
+  `12.50-` or `(12.50)` becomes a real number, in every column, even with
+  stray tabs, line breaks or invisible spaces around it. Whole numbers with
+  leading zeros, like `00123`, become numbers too, formatted so they still show
+  their zeros. Left as text on purpose: anything over 15 digits (too long for
   Excel to store exactly), dates, and percents. The message at the end says how
   many cells were converted.
 - **ERROR check:** AMOUNT and Check Number are compared to 6 decimal places, so
