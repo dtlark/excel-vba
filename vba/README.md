@@ -11,7 +11,8 @@ For each Excel file in the RAW folder, the `ProcessRawInvoices` macro:
 
 1. Copies the header and data rows to a new workbook, with the header on row 3.
    Rows containing "subtotal for" or "grand total", and empty rows, are left out.
-2. Makes it a table named `Inv_<Tab Name>`, adds the **Check Number**, blank and
+2. Makes it a table named `Inv_<Tab Name>` in **White, Table Style Medium 1**
+   (set by `TABLE_STYLE` near the top of the code), adds the **Check Number**, blank and
    **V** columns with orange headers, and highlights ERROR cells in red.
 3. Puts `=SUBTOTAL(9, Inv_<Tab Name>[AMOUNT])` on row 2 above AMOUNT.
 4. Saves it as `Invoice <Tab Name> <Postfix>.xlsx` in the Invoice folder.

@@ -44,7 +44,11 @@ Private Const H_TAX As String = "TAX"
 Private Const H_FREIGHT As String = "FREIGHT|FREGHT"
 Private Const H_AMOUNT As String = "AMOUNT"
 
-Private Const ORANGE As Long = 3305961       ' #E97132 = RGB(233, 113, 50)
+' Style for the Inv_ table: "White, Table Style Medium 1" in Excel's Table Design gallery.
+' Other styles follow the same pattern, e.g. "TableStyleMedium2" or "TableStyleLight9".
+Private Const TABLE_STYLE As String = "TableStyleMedium1"
+
+Private Const ORANGE As Long = 3305961        ' #E97132 = RGB(233, 113, 50)
 Private Const ERROR_TEXT As Long = 393372     ' #9C0006 = RGB(156, 0, 6)
 Private Const ERROR_FILL As Long = 13551615   ' #FFC7CE = RGB(255, 199, 206)
 
@@ -219,6 +223,7 @@ Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workboo
     Set lo = ws.ListObjects.Add(SourceType:=xlSrcRange, XlListObjectHasHeaders:=xlYes, _
         Source:=ws.Range(ws.Cells(3, 1), ws.Cells(lastRow, lastCol + 3)))
     lo.Name = tableName
+    lo.TableStyle = TABLE_STYLE
     Set checkCol = lo.ListColumns(lastCol + 1)
     Set errorCol = lo.ListColumns(lastCol + 2)
     Set vCol = lo.ListColumns(lastCol + 3)
