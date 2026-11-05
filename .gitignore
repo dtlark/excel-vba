@@ -13,6 +13,8 @@ desktop.ini
 .env
 .env.*
 !.env.example
+# Real paths for the Python version stay on your computer
+python/settings.ini
 
 # Logs
 *.log
