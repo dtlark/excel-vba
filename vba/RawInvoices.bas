@@ -80,6 +80,7 @@ Public Sub ProcessRawInvoices()
     Dim master As Workbook, consLo As ListObject
     Dim result As String, note As String, invoiceFile As String
     Dim fileList As String, doneList As String, skipList As String, summary As String
+    Dim duplicates As String
     Dim nDone As Long, nSkipped As Long, oldCalc As Long, calcChanged As Boolean
 
     On Error GoTo Failed
@@ -124,6 +125,15 @@ Public Sub ProcessRawInvoices()
     If consLo Is Nothing Then
         MsgBox master.Name & " has no table named " & CONSUMABLES_TABLE & " (it should be on the " & _
                CONSUMABLES_TAB & " tab), so nothing was processed.", vbExclamation, APP_TITLE
+        Exit Sub
+    End If
+
+    ' Any duplicate stops the whole run before anything is changed.
+    duplicates = FindDuplicates(files, nFiles, master, consLo)
+    If Len(duplicates) > 0 Then
+        MsgBox "Stopped: found duplicates, so nothing was processed." & vbLf & duplicates & _
+               vbLf & vbLf & "Take those files out of RAW, or remove the old copies " & _
+               "(from the Master List or the Done folder), then run again.", vbCritical, APP_TITLE
         Exit Sub
     End If
     If Not FolderExists(doneFolder) Then MkDir doneFolder
@@ -805,6 +815,68 @@ Private Sub AppendToConsumables(ByVal consLo As ListObject, ByVal invLo As ListO
     Application.CutCopyMode = False
     consLo.DataBodyRange.Cells(firstNew, CONS_TAB_NAME_COLUMN).Resize(nAdd, 1).Value = tabName
 End Sub
+
+' Checks every RAW file before anything is changed. Returns one line per duplicate
+' ("" when there are none). A file is a duplicate when:
+'   - the Done folder already has a file with the same name,
+'   - the Master List already has its tab or its Inv_ table,
+'   - the Consumables table already has rows for its tab name, or
+'   - another RAW file in this run has the same tab name.
+Private Function FindDuplicates(ByRef files() As String, ByVal nFiles As Long, _
+                                ByVal master As Workbook, ByVal consLo As ListObject) As String
+    Dim i As Long, tabName As String, reason As String, seen As String
+
+    Application.ScreenUpdating = False
+    For i = 1 To nFiles
+        Application.StatusBar = APP_TITLE & ": checking for duplicates, file " & i & " of " & nFiles
+        reason = ""
+        tabName = ""
+        If FileExists(doneFolder & "\" & files(i)) Then
+            reason = "the Done folder already has a file with this name"
+        ElseIf Not IsWorkbookOpen(files(i)) Then            ' open files get skipped later anyway
+            tabName = RawTabName(rawFolder & "\" & files(i))
+        End If
+        If Len(tabName) > 0 Then
+            If SheetExists(master, tabName) Then
+                reason = "the Master List already has a tab named " & tabName
+            ElseIf TableExists(master, TableNameFor(tabName)) Then
+                reason = "the Master List already has a table named " & TableNameFor(tabName)
+            ElseIf ConsumablesHas(consLo, tabName) Then
+                reason = "the " & CONSUMABLES_TABLE & " table already has rows for " & tabName
+            ElseIf InStr(1, seen, "|" & tabName & "|", vbTextCompare) > 0 Then
+                reason = "another file in RAW is also tab " & tabName
+            End If
+            seen = seen & "|" & tabName & "|"
+        End If
+        If Len(reason) > 0 Then FindDuplicates = FindDuplicates & vbLf & "  " & files(i) & ": " & reason
+    Next i
+    Application.StatusBar = False
+    Application.ScreenUpdating = True
+End Function
+
+' The name of a RAW file's tab, or "" if the file can't be opened.
+Private Function RawTabName(ByVal path As String) As String
+    Dim wb As Workbook
+    On Error GoTo Failed
+    Application.DisplayAlerts = False
+    Set wb = Workbooks.Open(Filename:=path, UpdateLinks:=0, ReadOnly:=True, AddToMru:=False)
+    RawTabName = wb.Worksheets(1).Name
+Cleanup:
+    On Error Resume Next
+    If Not wb Is Nothing Then wb.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    Exit Function
+Failed:
+    Resume Cleanup
+End Function
+
+' True when the Consumables table's tab-name column already holds this tab name
+' (as a number or as text).
+Private Function ConsumablesHas(ByVal consLo As ListObject, ByVal tabName As String) As Boolean
+    If consLo.DataBodyRange Is Nothing Then Exit Function
+    ConsumablesHas = Application.WorksheetFunction.CountIf( _
+        consLo.DataBodyRange.Columns(CONS_TAB_NAME_COLUMN), tabName) > 0
+End Function
 
 ' The table with this name anywhere in the workbook, or Nothing.
 Private Function FindTable(ByVal wb As Workbook, ByVal tableName As String) As ListObject

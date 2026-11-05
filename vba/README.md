@@ -80,11 +80,24 @@ To undo a run: close the Master List without saving (that also undoes the
 Consumables rows), move the RAW file back out of `Done`, and delete the Invoice
 file.
 
+### Duplicates stop the run
+
+Before changing anything, the macro checks every file in RAW. If any of them is
+a duplicate, it stops with an error that lists them, and nothing in that run is
+processed. A file is a duplicate when:
+
+- the Done folder already has a file with the same name,
+- the Master List already has its tab, or its `Inv_` table,
+- the Consumables table already has rows with its tab name in the 4th column, or
+- another file in RAW has the same tab name.
+
+Take those files out of RAW (or remove the old copies), then run again.
+
 ### When a file is skipped
 
-The file stays in RAW, and the message at the end says why:
+The file stays in RAW, the other files are still processed, and the message at
+the end says why:
 
-- The Master List already has a tab (or table) with that name.
 - Row 1 is missing SHIPPED, PRICE/UNIT, TAX, FREIGHT (or FREGHT) or AMOUNT.
 - The Consumables table doesn't have enough columns for the file's data.
 - The file is open in Excel.
