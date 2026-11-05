@@ -266,6 +266,7 @@ Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workboo
     End If
     lastRow = 3 + nKept
     ConvertTextNumbers ws.Range(ws.Cells(4, 1), ws.Cells(lastRow, lastCol))   ' quietly, no note
+    DropZeroPadFormats ws.Range(ws.Cells(4, 1), ws.Cells(lastRow, lastCol))   ' e.g. SHIP TO 0012345
 
     colShipped = FindHeader(ws, lastCol, H_SHIPPED, missing)
     colPrice = FindHeader(ws, lastCol, H_PRICE, missing)
@@ -664,6 +665,33 @@ End Function
 
 Private Function IsAllDigits(ByVal s As String) As Boolean
     IsAllDigits = Len(s) > 0 And Not (s Like "*[!0-9]*")
+End Function
+
+' Numbers that only show leading zeros because of their number format (the vendor's
+' "0000000" makes 12345 show as 0012345) go back to the plain General format.
+' Every other format, like dates, is kept.
+Private Sub DropZeroPadFormats(ByVal rng As Range)
+    Dim col As Range, cell As Range, fmt As Variant
+    For Each col In rng.Columns
+        fmt = col.NumberFormat                              ' Null when the cells' formats differ
+        If IsNull(fmt) Then
+            For Each cell In col.Cells
+                If IsZeroPadFormat(CStr(cell.NumberFormat)) Then cell.NumberFormat = "General"
+            Next cell
+        ElseIf IsZeroPadFormat(CStr(fmt)) Then
+            col.NumberFormat = "General"
+        End If
+    Next col
+End Sub
+
+' True for a number format that pads numbers with leading zeros, like "0000000" or
+' "00000-0000". Only the part before the first ; counts, after any [Red] or [$-409].
+Private Function IsZeroPadFormat(ByVal fmt As String) As Boolean
+    If InStr(fmt, ";") > 0 Then fmt = Left$(fmt, InStr(fmt, ";") - 1)
+    Do While Left$(fmt, 1) = "[" And InStr(fmt, "]") > 0
+        fmt = Mid$(fmt, InStr(fmt, "]") + 1)
+    Loop
+    IsZeroPadFormat = (Left$(fmt, 2) = "00")
 End Function
 
 ' A range's values as a 2-D array, even when it's a single cell.

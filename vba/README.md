@@ -136,6 +136,9 @@ macro adds that row at the bottom the next time it runs.
   stray tabs, line breaks or invisible spaces around it. Leading zeros are
   dropped: `00123` becomes `123`. Left as text on purpose: anything over 15
   digits (too long for Excel to store exactly), dates, and percents.
+- **Leading-zero formats:** a number format that pads numbers with zeros (like
+  the vendor's `0000000` on SHIP TO, which shows `12345` as `0012345`) is reset
+  to General. Other formats, like dates, are kept.
 - **ERROR check:** AMOUNT and Check Number are compared to 6 decimal places, so
   computer rounding noise (like 0.00000000000001) isn't flagged. Any real
   difference is, even a fraction of a cent.
