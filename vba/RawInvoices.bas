@@ -36,7 +36,15 @@ Private Const SET_DONE As String = "Done folder"
 Private Const SET_INVOICE As String = "Invoice folder"
 Private Const SET_MASTER As String = "Master List file"
 
-Private Const ORANGE As Long = 3305961        ' #E97132 = RGB(233, 113, 50)
+' Column headers the macro looks for in row 1 of the RAW file (capitals don't matter).
+' Put other spellings after a |, like the vendor's "FREGHT" below.
+Private Const H_SHIPPED As String = "SHIPPED"
+Private Const H_PRICE As String = "PRICE/UNIT"
+Private Const H_TAX As String = "TAX"
+Private Const H_FREIGHT As String = "FREIGHT|FREGHT"
+Private Const H_AMOUNT As String = "AMOUNT"
+
+Private Const ORANGE As Long = 3305961       ' #E97132 = RGB(233, 113, 50)
 Private Const ERROR_TEXT As Long = 393372     ' #9C0006 = RGB(156, 0, 6)
 Private Const ERROR_FILL As Long = 13551615   ' #FFC7CE = RGB(255, 199, 206)
 
@@ -194,11 +202,11 @@ Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workboo
     End If
     lastRow = 3 + nKept
 
-    colShipped = FindHeader(ws, lastCol, "SHIPPED", missing)
-    colPrice = FindHeader(ws, lastCol, "PRICE/UNIT", missing)
-    colTax = FindHeader(ws, lastCol, "TAX", missing)
-    colFreight = FindHeader(ws, lastCol, "FREIGHT", missing)
-    colAmount = FindHeader(ws, lastCol, "AMOUNT", missing)
+    colShipped = FindHeader(ws, lastCol, H_SHIPPED, missing)
+    colPrice = FindHeader(ws, lastCol, H_PRICE, missing)
+    colTax = FindHeader(ws, lastCol, H_TAX, missing)
+    colFreight = FindHeader(ws, lastCol, H_FREIGHT, missing)
+    colAmount = FindHeader(ws, lastCol, H_AMOUNT, missing)
     If Len(missing) > 0 Then
         msg = "row 1 has no " & missing & " column."
         GoTo Cleanup
@@ -480,21 +488,24 @@ Private Function ValuesOf(ByVal rng As Range) As Variant
 End Function
 
 ' Column number of a header on row 3, ignoring capitals and extra spaces.
-' Returns 0 and adds the header to "missing" when it isn't there.
-Private Function FindHeader(ByVal ws As Worksheet, ByVal lastCol As Long, ByVal header As String, _
+' "spellings" lists every accepted spelling, separated by |, e.g. "FREIGHT|FREGHT".
+' Returns 0 and adds the first spelling to "missing" when none are there.
+Private Function FindHeader(ByVal ws As Worksheet, ByVal lastCol As Long, ByVal spellings As String, _
                             ByRef missing As String) As Long
-    Dim c As Long, v As Variant
-    For c = 1 To lastCol
-        v = ws.Cells(3, c).Value
-        If Not IsError(v) Then
-            If StrComp(Trim$(CStr(v)), header, vbTextCompare) = 0 Then
-                FindHeader = c
-                Exit Function
+    Dim c As Long, v As Variant, spelling As Variant
+    For Each spelling In Split(spellings, "|")
+        For c = 1 To lastCol
+            v = ws.Cells(3, c).Value
+            If Not IsError(v) Then
+                If StrComp(Trim$(CStr(v)), Trim$(CStr(spelling)), vbTextCompare) = 0 Then
+                    FindHeader = c
+                    Exit Function
+                End If
             End If
-        End If
-    Next c
+        Next c
+    Next spelling
     If Len(missing) > 0 Then missing = missing & ", "
-    missing = missing & header
+    missing = missing & Split(spellings, "|")(0)
 End Function
 
 ' A this-row reference to a table column, like [@[PRICE/UNIT]]

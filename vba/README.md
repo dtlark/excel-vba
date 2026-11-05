@@ -74,7 +74,7 @@ of `Done`, and delete the Invoice file.
 The file stays in RAW, and the message at the end says why:
 
 - The Master List already has a tab (or table) with that name.
-- Row 1 is missing SHIPPED, PRICE/UNIT, TAX, FREIGHT or AMOUNT.
+- Row 1 is missing SHIPPED, PRICE/UNIT, TAX, FREIGHT (or FREGHT) or AMOUNT.
 - The file is open in Excel.
 - There are no data rows.
 
@@ -95,7 +95,12 @@ just update the paths on the Settings sheet.
   computer rounding noise (like 0.00000000000001) isn't flagged. Any real
   difference is, even a fraction of a cent.
 - **Columns are found by header name**, ignoring capitals and extra spaces, so
-  it still works if the vendor moves a column.
+  it still works if the vendor moves a column. The names are near the top of
+  the code. To accept another spelling, add it after a `|` on that column's line:
+
+  ```vb
+  Private Const H_FREIGHT As String = "FREIGHT|FREGHT"
+  ```
 
 ## PdfDiagnose.bas
 
