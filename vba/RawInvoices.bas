@@ -266,7 +266,7 @@ Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workboo
     End If
     lastRow = 3 + nKept
     ConvertTextNumbers ws.Range(ws.Cells(4, 1), ws.Cells(lastRow, lastCol))   ' quietly, no note
-    DropZeroPadFormats ws.Range(ws.Cells(4, 1), ws.Cells(lastRow, lastCol))   ' e.g. SHIP TO 0012345
+    FixZeroPadFormats ws.Range(ws.Cells(4, 1), ws.Cells(lastRow, lastCol))    ' e.g. SHIP TO 0012345
 
     colShipped = FindHeader(ws, lastCol, H_SHIPPED, missing)
     colPrice = FindHeader(ws, lastCol, H_PRICE, missing)
@@ -589,14 +589,16 @@ End Function
 ' and returns how many cells it changed. Only those cells are rewritten, so any other
 ' text is left exactly as it was.
 Private Function ConvertTextNumbers(ByVal rng As Range) As Long
-    Dim v As Variant, r As Long, c As Long, n As Double
+    Dim v As Variant, r As Long, c As Long, n As Double, decimals As Long
     v = ValuesOf(rng)
     For r = 1 To UBound(v, 1)
         For c = 1 To UBound(v, 2)
             If VarType(v(r, c)) = vbString Then
-                If TextToNumber(CStr(v(r, c)), n) Then
+                If TextToNumber(CStr(v(r, c)), n, decimals) Then
                     With rng.Cells(r, c)
-                        If .NumberFormat = "@" Then .NumberFormat = "General"   ' Text format keeps text
+                        ' A Text format would keep it text: use Number, with the same decimals.
+                        ' Any other format is left as it is.
+                        If .NumberFormat = "@" Then .NumberFormat = NumberFormatWithDecimals(decimals)
                         .Value = n
                     End With
                     ConvertTextNumbers = ConvertTextNumbers + 1
@@ -606,12 +608,14 @@ Private Function ConvertTextNumbers(ByVal rng As Range) As Long
     Next r
 End Function
 
-' True when s is a number written as text, and puts the number in result. Handles
-' spaces (also tabs, line breaks and invisible spaces), a $ sign, commas between
-' thousands, and negatives written as -12.50, 12.50- or (12.50). Leading zeros are
-' dropped: "00123" becomes 123. Stays text: more than 15 digits (too long for Excel
-' to hold exactly), dates, percents and anything else.
-Private Function TextToNumber(ByVal s As String, ByRef result As Double) As Boolean
+' True when s is a number written as text, and puts the number in result and how many
+' decimal places it was written with in decimals. Handles spaces (also tabs, line
+' breaks and invisible spaces), a $ sign, commas between thousands, and negatives
+' written as -12.50, 12.50- or (12.50). Leading zeros are dropped: "00123" becomes 123.
+' Stays text: more than 15 digits (too long for Excel to hold exactly), dates,
+' percents and anything else.
+Private Function TextToNumber(ByVal s As String, ByRef result As Double, _
+                              ByRef decimals As Long) As Boolean
     Dim negative As Boolean, intPart As String, fracPart As String, dotPos As Long
     Dim groups As Variant, g As Long
 
@@ -660,6 +664,7 @@ Private Function TextToNumber(ByVal s As String, ByRef result As Double) As Bool
 
     result = Val(intPart & "." & fracPart)                  ' Val always reads "." as the decimal point
     If negative Then result = -result
+    decimals = Len(fracPart)
     TextToNumber = True
 End Function
 
@@ -668,30 +673,59 @@ Private Function IsAllDigits(ByVal s As String) As Boolean
 End Function
 
 ' Numbers that only show leading zeros because of their number format (the vendor's
-' "0000000" makes 12345 show as 0012345) go back to the plain General format.
-' Every other format, like dates, is kept.
-Private Sub DropZeroPadFormats(ByVal rng As Range)
+' "0000000" makes 12345 show as 0012345) get Excel's Number format instead, with the
+' same decimal places. Only those cells change: dates and every other format are
+' left exactly as they are.
+Private Sub FixZeroPadFormats(ByVal rng As Range)
     Dim col As Range, cell As Range, fmt As Variant
     For Each col In rng.Columns
         fmt = col.NumberFormat                              ' Null when the cells' formats differ
         If IsNull(fmt) Then
             For Each cell In col.Cells
-                If IsZeroPadFormat(CStr(cell.NumberFormat)) Then cell.NumberFormat = "General"
+                If IsZeroPadFormat(CStr(cell.NumberFormat)) Then
+                    cell.NumberFormat = NumberFormatWithDecimals(FormatDecimals(CStr(cell.NumberFormat)))
+                End If
             Next cell
         ElseIf IsZeroPadFormat(CStr(fmt)) Then
-            col.NumberFormat = "General"
+            col.NumberFormat = NumberFormatWithDecimals(FormatDecimals(CStr(fmt)))
         End If
     Next col
 End Sub
 
 ' True for a number format that pads numbers with leading zeros, like "0000000" or
-' "00000-0000". Only the part before the first ; counts, after any [Red] or [$-409].
+' "00000-0000".
 Private Function IsZeroPadFormat(ByVal fmt As String) As Boolean
+    IsZeroPadFormat = (Left$(FirstFormatSection(fmt), 2) = "00")
+End Function
+
+' How many decimal places a number format shows: "0000.00" -> 2, "0000000" -> 0.
+Private Function FormatDecimals(ByVal fmt As String) As Long
+    Dim p As Long
+    fmt = FirstFormatSection(fmt)
+    p = InStr(fmt, ".")
+    If p = 0 Then Exit Function
+    For p = p + 1 To Len(fmt)
+        If Mid$(fmt, p, 1) <> "0" And Mid$(fmt, p, 1) <> "#" Then Exit For
+        FormatDecimals = FormatDecimals + 1
+    Next p
+End Function
+
+' The part of a number format before the first ; without a leading [Red] or [$-409].
+Private Function FirstFormatSection(ByVal fmt As String) As String
     If InStr(fmt, ";") > 0 Then fmt = Left$(fmt, InStr(fmt, ";") - 1)
     Do While Left$(fmt, 1) = "[" And InStr(fmt, "]") > 0
         fmt = Mid$(fmt, InStr(fmt, "]") + 1)
     Loop
-    IsZeroPadFormat = (Left$(fmt, 2) = "00")
+    FirstFormatSection = fmt
+End Function
+
+' Excel's Number format with this many decimal places: 0 -> "0", 2 -> "0.00".
+Private Function NumberFormatWithDecimals(ByVal decimals As Long) As String
+    If decimals <= 0 Then
+        NumberFormatWithDecimals = "0"
+    Else
+        NumberFormatWithDecimals = "0." & String$(decimals, "0")
+    End If
 End Function
 
 ' A range's values as a 2-D array, even when it's a single cell.
