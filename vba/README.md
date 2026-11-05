@@ -1,12 +1,106 @@
-# VBA: PDF → Word → Excel
+# VBA macros
 
-Word can open a PDF and convert it to an editable document, but the table comes
-out wrong. If it comes out wrong the same way every time, a macro can undo it.
+| File | What it does |
+|---|---|
+| `RawInvoices.bas` | Turns the vendor's RAW files into Invoice workbooks and adds each one to the Master List. |
+| `PdfDiagnose.bas` | Shows what Word's PDF conversion produces (PDF experiment). |
 
-## Step 1: see what the conversion produces (`PdfDiagnose.bas`)
+## RawInvoices.bas
+
+For each Excel file in the RAW folder, the `ProcessRawInvoices` macro:
+
+1. Copies the header and data rows to a new workbook, with the header on row 3.
+   Rows containing "subtotal for" or "grand total", and empty rows, are left out.
+2. Makes it a table named `Inv_<Tab Name>`, adds the **Check Number**, blank and
+   **V** columns with orange headers, and highlights ERROR cells in red.
+3. Puts `=SUBTOTAL(9, Inv_<Tab Name>[AMOUNT])` on row 2 above AMOUNT.
+4. Saves it as `Invoice <Tab Name> <Postfix>.xlsx` in the Invoice folder.
+5. Copies the tab to the end of the Master List.
+6. Moves the RAW file into the Done folder.
+
+You only need Excel open with the macro workbook. The macro opens and closes the
+RAW and Invoice files itself. The Master List can be open or closed: if it's
+closed, the macro opens it. The macro never saves the Master List, so you can
+check the new tabs first.
+
+### Set up (once)
+
+1. In Excel, create a blank workbook and save it as **Excel Macro-Enabled
+   Workbook (\*.xlsm)**, for example `Invoice Macros.xlsm`. Save it anywhere
+   except the RAW folder.
+2. Press **Alt+F11**, then click **Insert → Module**.
+3. Paste in the contents of `RawInvoices.bas`. On GitHub, open the file and
+   click **Copy raw file**. (Or use **File → Import File** with the downloaded file.)
+4. Close the VBA editor. Press **Alt+F8**, pick **ProcessRawInvoices**, and
+   click **Run**. The first time, it adds a **Settings** sheet and stops.
+5. On the Settings sheet, fill in column B:
+
+   | Setting | What to put |
+   |---|---|
+   | RAW folder | The folder you save the vendor's Excel files into |
+   | Done folder | Where processed RAW files go. Leave blank for a `Done` folder inside the RAW folder |
+   | Invoice folder | The folder the `Invoice <Tab Name>` files are saved in |
+   | Master List file | The Master List's full path. The `.xlsx` can be left off |
+
+   To copy a path, right-click the folder or file in File Explorer and choose
+   **Copy as path** (on Windows 10, hold Shift while right-clicking). The quotes
+   it adds are removed automatically.
+6. Save the workbook.
+
+### Each time
+
+1. Save the vendor's Excel files into the RAW folder.
+2. Open `Invoice Macros.xlsm`. If a yellow bar says macros are disabled, click
+   **Enable Content**.
+3. Press **Alt+F8**, pick **ProcessRawInvoices**, and click **Run**. It lists
+   the files it found and asks before starting.
+4. Read the message at the end. Any file that couldn't be processed is still in
+   RAW, with the reason.
+5. Check the new tabs at the end of the Master List, then save it.
+
+### First run
+
+Test with one file before trusting it with a batch:
+
+1. Make a backup copy of the Master List.
+2. Leave just one file in RAW and run the macro.
+3. Compare the Invoice file and the new Master List tab with what you'd make by hand.
+
+To undo a run: close the Master List without saving, move the RAW file back out
+of `Done`, and delete the Invoice file.
+
+### When a file is skipped
+
+The file stays in RAW, and the message at the end says why:
+
+- The Master List already has a tab (or table) with that name.
+- Row 1 is missing SHIPPED, PRICE/UNIT, TAX, FREIGHT or AMOUNT.
+- The file is open in Excel.
+- There are no data rows.
+
+### Updating the macro
+
+When there's a new version, press **Alt+F11**, click in the module, select all
+the code (**Ctrl+A**), paste the new version over it, and save. Your paths stay
+on the Settings sheet, so there's nothing to re-enter. For a new fiscal year,
+just update the paths on the Settings sheet.
+
+### Details
+
+- **Invoice file name:** the part of the RAW file name after the tab name,
+  without leading spaces, `_` or `-`. `123456 Oct.xlsx` and `123456 - Oct.xlsx`
+  both become `Invoice 123456 Oct.xlsx`, and `123456.xlsx` becomes
+  `Invoice 123456.xlsx`.
+- **ERROR check:** AMOUNT and Check Number are compared to 6 decimal places, so
+  computer rounding noise (like 0.00000000000001) isn't flagged. Any real
+  difference is, even a fraction of a cent.
+- **Columns are found by header name**, ignoring capitals and extra spaces, so
+  it still works if the vendor moves a column.
+
+## PdfDiagnose.bas
 
 This macro opens a PDF in Word and copies exactly what Word made into Excel,
-without fixing anything, so you can see what goes wrong.
+without fixing anything, so you can see what goes wrong in the conversion.
 
 ### Set up (once)
 
@@ -34,17 +128,5 @@ Word stays open on the converted document so you can compare the two. Close it
 without saving. To have Word close automatically, change `SHOW_WORD` to `False`
 at the top of the code.
 
-### What to report back
-
-- The numbers on the **Summary** sheet.
-- What a broken row looks like next to how it should look. For example: "the
-  header row has 8 cells but data rows have 7, and cell F holds both Qty and
-  Unit Price".
-
 Try `sample-table.pdf` first. Its data is made up, so you can share all of the
 output.
-
-## Step 2: fix the table (to do)
-
-Once the pattern is known, a second macro will convert the PDF, undo the
-known errors, and write a clean table to a sheet.
