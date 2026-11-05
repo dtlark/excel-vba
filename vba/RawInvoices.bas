@@ -7,7 +7,8 @@ Option Explicit
 '    1. Opens it. Its tab name (e.g. 123456) is the <Tab Name>.
 '    2. Copies the header row and data rows (values and number formats only)
 '       into a new one-tab workbook, header on row 3, leaving out rows that
-'       contain "subtotal for" or "grand total", and empty rows.
+'       contain "subtotal for" or "grand total", and empty rows. Numbers
+'       stored as text become real numbers.
 '    3. Makes it a table named Inv_<Tab Name> and adds three columns
 '       with orange headers:
 '         Check Number  = SHIPPED x PRICE/UNIT + TAX + FREIGHT
@@ -185,7 +186,7 @@ Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workboo
     Dim msg As String
     Dim lastRow As Long, lastCol As Long, nRows As Long, nKept As Long
     Dim colShipped As Long, colPrice As Long, colTax As Long, colFreight As Long, colAmount As Long
-    Dim colOrdered As Long
+    Dim colOrdered As Long, nConverted As Long
 
     On Error GoTo Failed
     Application.DisplayAlerts = False                       ' no "replace this file?" prompts
@@ -247,6 +248,8 @@ Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workboo
         GoTo Cleanup
     End If
     lastRow = 3 + nKept
+    nConverted = ConvertTextNumbers(ws.Range(ws.Cells(4, 1), ws.Cells(lastRow, lastCol)))
+    If nConverted > 0 Then AddNote note, nConverted & " number(s) stored as text became real numbers"
 
     colShipped = FindHeader(ws, lastCol, H_SHIPPED, missing)
     colPrice = FindHeader(ws, lastCol, H_PRICE, missing)
@@ -542,6 +545,82 @@ Private Function DeleteUnwantedRows(ByVal rng As Range) As Long
         End If
     Next r
     If Not toDelete Is Nothing Then toDelete.Delete
+End Function
+
+' Turns numbers stored as text (like "12.50", "1,234" or "$ (5.00)") into real numbers
+' and returns how many cells it changed. Only those cells are rewritten, so any other
+' text is left exactly as it was.
+Private Function ConvertTextNumbers(ByVal rng As Range) As Long
+    Dim v As Variant, r As Long, c As Long, n As Double
+    v = ValuesOf(rng)
+    For r = 1 To UBound(v, 1)
+        For c = 1 To UBound(v, 2)
+            If VarType(v(r, c)) = vbString Then
+                If TextToNumber(CStr(v(r, c)), n) Then
+                    With rng.Cells(r, c)
+                        If .NumberFormat = "@" Then .NumberFormat = "General"   ' Text format keeps text
+                        .Value = n
+                    End With
+                    ConvertTextNumbers = ConvertTextNumbers + 1
+                End If
+            End If
+        Next c
+    Next r
+End Function
+
+' True when s is a number written as text, and puts the number in result. Handles
+' spaces, a $ sign, commas between thousands, and negatives written as -12.50, 12.50-
+' or (12.50). Stays text: leading zeros like "00123" (codes, not amounts), more than
+' 15 digits (too long for Excel to hold exactly), dates, percents and anything else.
+Private Function TextToNumber(ByVal s As String, ByRef result As Double) As Boolean
+    Dim negative As Boolean, intPart As String, fracPart As String, dotPos As Long
+    Dim groups As Variant, g As Long
+
+    s = Trim$(Replace(s, Chr(160), " "))                    ' non-breaking spaces too
+    If Len(s) - Len(Replace(s, "$", "")) > 1 Then Exit Function
+    s = Trim$(Replace(s, "$", ""))
+    If Len(s) >= 2 And Left$(s, 1) = "(" And Right$(s, 1) = ")" Then           ' (12.50)
+        negative = True
+        s = Trim$(Mid$(s, 2, Len(s) - 2))
+    ElseIf Len(s) >= 2 And Right$(s, 1) = "-" Then                             ' 12.50-
+        negative = True
+        s = Trim$(Left$(s, Len(s) - 1))
+    ElseIf Len(s) >= 2 And (Left$(s, 1) = "-" Or Left$(s, 1) = "+") Then       ' -12.50
+        negative = (Left$(s, 1) = "-")
+        s = Trim$(Mid$(s, 2))
+    End If
+    If Len(s) = 0 Then Exit Function
+
+    ' What's left may only be digits, commas between groups of 3, and one dot.
+    dotPos = InStr(s, ".")
+    If dotPos > 0 Then
+        intPart = Left$(s, dotPos - 1)
+        fracPart = Mid$(s, dotPos + 1)
+        If Len(fracPart) > 0 And Not IsAllDigits(fracPart) Then Exit Function
+    Else
+        intPart = s
+    End If
+    If InStr(intPart, ",") > 0 Then
+        groups = Split(intPart, ",")
+        If Len(groups(0)) > 3 Or Not IsAllDigits(CStr(groups(0))) Then Exit Function
+        For g = 1 To UBound(groups)
+            If Len(groups(g)) <> 3 Or Not IsAllDigits(CStr(groups(g))) Then Exit Function
+        Next g
+        intPart = Replace(intPart, ",", "")
+    ElseIf Len(intPart) > 0 Then
+        If Not IsAllDigits(intPart) Then Exit Function
+    End If
+    If Len(intPart) + Len(fracPart) = 0 Then Exit Function
+    If Len(intPart) > 1 And Left$(intPart, 1) = "0" Then Exit Function     ' "00123" is a code
+    If Len(intPart) + Len(fracPart) > 15 Then Exit Function                 ' too long for Excel
+
+    result = Val(intPart & "." & fracPart)                  ' Val always reads "." as the decimal point
+    If negative Then result = -result
+    TextToNumber = True
+End Function
+
+Private Function IsAllDigits(ByVal s As String) As Boolean
+    IsAllDigits = Len(s) > 0 And Not (s Like "*[!0-9]*")
 End Function
 
 ' A range's values as a 2-D array, even when it's a single cell.

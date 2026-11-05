@@ -12,7 +12,7 @@ For each Excel file in the RAW folder, the `ProcessRawInvoices` macro:
 1. Copies the header and data rows to a new workbook, with the header on row 3.
    Rows containing "subtotal for" or "grand total", and empty rows, are left out.
    Only values and number formats are copied, so the vendor's colors and fonts
-   don't cover up the table style.
+   don't cover up the table style. Numbers stored as text become real numbers.
 2. Makes it a table named `Inv_<Tab Name>` in **White, Table Style Medium 1**
    (set by `TABLE_STYLE` near the top of the code), adds the **Check Number**, blank and
    **V** columns with orange headers, and highlights ERROR cells in red.
@@ -107,6 +107,12 @@ just update the paths on the Settings sheet.
   `123456 - ABC.xlsx` both become `Invoice 123456 (ABC).xlsx`. If nothing comes
   after the tab name, there are no parentheses: `123456.xlsx` becomes
   `Invoice 123456.xlsx`.
+- **Numbers stored as text:** text like `12.50`, `1,234`, `$12.50`, `-12.50`,
+  `12.50-` or `(12.50)` becomes a real number, in every column. Some text is
+  left alone on purpose: values with leading zeros like `00123` (usually codes,
+  and converting would drop the zeros), anything over 15 digits (too long for
+  Excel to store exactly), dates, and percents. The message at the end says how
+  many cells were converted.
 - **ERROR check:** AMOUNT and Check Number are compared to 6 decimal places, so
   computer rounding noise (like 0.00000000000001) isn't flagged. Any real
   difference is, even a fraction of a cent.
