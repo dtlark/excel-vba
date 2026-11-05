@@ -40,6 +40,12 @@ Private Const SET_RAW As String = "RAW folder"
 Private Const SET_DONE As String = "Done folder"
 Private Const SET_INVOICE As String = "Invoice folder"
 Private Const SET_MASTER As String = "Master List file"
+Private Const SET_FY As String = "Fiscal year"
+' Anywhere a path on the Settings sheet says {FY}, the macro puts "FY" and the Fiscal
+' year setting, e.g. {FY} -> FY26. Change the Fiscal year to 27 and every path follows.
+Private Const FY_TAG As String = "{FY}"
+Private Const FY_NOTE As String = "Just the number, like 26. Wherever a path says {FY}, " & _
+                                  "the macro puts FY and this number, like FY26"
 
 ' Column headers the macro looks for in row 1 of the RAW file (capitals don't matter).
 ' Put other spellings after a |, like the vendor's "FREGHT" below.
@@ -372,7 +378,7 @@ End Function
 ' Reads the Settings sheet in this workbook, adding the sheet if it isn't there.
 ' Returns False (after saying what to do) when something needs filling in.
 Private Function LoadSettings() As Boolean
-    Dim ws As Worksheet, missing As String
+    Dim ws As Worksheet, missing As String, fiscalYear As String, usesFY As Boolean, r As Long
 
     On Error Resume Next
     Set ws = ThisWorkbook.Worksheets(SETTINGS_SHEET)
@@ -381,27 +387,42 @@ Private Function LoadSettings() As Boolean
         Set ws = ThisWorkbook.Worksheets.Add(Before:=ThisWorkbook.Worksheets(1))
         ws.Name = SETTINGS_SHEET
         ws.Range("A1:C1").Value = Array("Setting", "Value", "What to put here")
-        ws.Range("A2:C2").Value = Array(SET_RAW, "", "Folder the vendor's Excel files are saved into")
-        ws.Range("A3:C3").Value = Array(SET_DONE, "", "Where processed RAW files go. Blank = a Done folder inside the RAW folder")
-        ws.Range("A4:C4").Value = Array(SET_INVOICE, "", "Folder the Invoice <Tab Name> files are saved in")
-        ws.Range("A5:C5").Value = Array(SET_MASTER, "", "Full path of the Master List workbook (the .xlsx can be left off)")
+        ws.Range("A2:C2").Value = Array(SET_FY, "", FY_NOTE)
+        ws.Range("A3:C3").Value = Array(SET_RAW, "", "Folder the vendor's Excel files are saved into")
+        ws.Range("A4:C4").Value = Array(SET_DONE, "", "Where processed RAW files go. Blank = a Done folder inside the RAW folder")
+        ws.Range("A5:C5").Value = Array(SET_INVOICE, "", "Folder the Invoice <Tab Name> files are saved in")
+        ws.Range("A6:C6").Value = Array(SET_MASTER, "", "Full path of the Master List workbook (the .xlsx can be left off)")
         ws.Rows(1).Font.Bold = True
         ws.Columns("A:C").AutoFit
         ws.Columns("B").ColumnWidth = 70
         ws.Activate
         ws.Range("B2").Select
         MsgBox "I added a Settings sheet to this workbook." & vbLf & vbLf & _
-               "Fill in column B (the folders and the Master List file), save this workbook, " & _
-               "and run the macro again.", vbInformation, APP_TITLE
+               "Fill in column B (the fiscal year, the folders and the Master List file), " & _
+               "save this workbook, and run the macro again.", vbInformation, APP_TITLE
         Exit Function
     End If
 
-    rawFolder = ReadSetting(ws, SET_RAW)
-    doneFolder = ReadSetting(ws, SET_DONE)
-    invoiceFolder = ReadSetting(ws, SET_INVOICE)
-    masterPath = ReadSetting(ws, SET_MASTER)
+    ' Settings sheets made before the Fiscal year setting existed get its row added at the end.
+    If ws.Columns(1).Find(What:=SET_FY, LookIn:=xlValues, LookAt:=xlWhole, MatchCase:=False) Is Nothing Then
+        r = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row + 1
+        ws.Cells(r, 1).Value = SET_FY
+        ws.Cells(r, 3).Value = FY_NOTE
+    End If
+
+    ' "26" and "FY26" both mean fiscal year 26
+    fiscalYear = ReadSetting(ws, SET_FY)
+    If UCase$(Left$(fiscalYear, 2)) = "FY" Then fiscalYear = Trim$(Mid$(fiscalYear, 3))
+
+    rawFolder = WithFiscalYear(ReadSetting(ws, SET_RAW), fiscalYear, usesFY)
+    doneFolder = WithFiscalYear(ReadSetting(ws, SET_DONE), fiscalYear, usesFY)
+    invoiceFolder = WithFiscalYear(ReadSetting(ws, SET_INVOICE), fiscalYear, usesFY)
+    masterPath = WithFiscalYear(ReadSetting(ws, SET_MASTER), fiscalYear, usesFY)
     If Len(doneFolder) = 0 And Len(rawFolder) > 0 Then doneFolder = rawFolder & "\Done"
 
+    If usesFY And Len(fiscalYear) = 0 Then
+        missing = missing & vbLf & "  " & SET_FY & " (a path uses " & FY_TAG & ")"
+    End If
     If Len(rawFolder) = 0 Then missing = missing & vbLf & "  " & SET_RAW
     If Len(invoiceFolder) = 0 Then missing = missing & vbLf & "  " & SET_INVOICE
     If InStr(masterPath, "\") = 0 Then missing = missing & vbLf & "  " & SET_MASTER & " (the full path)"
@@ -412,6 +433,17 @@ Private Function LoadSettings() As Boolean
         Exit Function
     End If
     LoadSettings = True
+End Function
+
+' The path with every {FY} replaced by "FY" and the fiscal year, e.g. FY26.
+' Sets usesFY to True when the path had a {FY} in it.
+Private Function WithFiscalYear(ByVal path As String, ByVal fiscalYear As String, _
+                                ByRef usesFY As Boolean) As String
+    If InStr(1, path, FY_TAG, vbTextCompare) > 0 Then
+        usesFY = True
+        path = Replace(path, FY_TAG, "FY" & fiscalYear, 1, -1, vbTextCompare)
+    End If
+    WithFiscalYear = path
 End Function
 
 ' The value in column B next to a label in column A, without quotes or a final \

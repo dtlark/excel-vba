@@ -46,10 +46,16 @@ check the new tabs and Consumables rows first.
 
    | Setting | What to put |
    |---|---|
+   | Fiscal year | Just the number, like `26`. See below |
    | RAW folder | The folder you save the vendor's Excel files into |
    | Done folder | Where processed RAW files go. Leave blank for a `Done` folder inside the RAW folder |
    | Invoice folder | The folder the `Invoice <Tab Name>` files are saved in |
    | Master List file | The Master List's full path. The `.xlsx` can be left off |
+
+   **Fiscal year in paths:** anywhere a path says `{FY}`, the macro puts `FY`
+   and the Fiscal year number. With Fiscal year `26`,
+   `C:\Invoices\{FY}\{FY} Master List` means `C:\Invoices\FY26\FY26 Master List`.
+   Next year, change Fiscal year to `27` and every path follows.
 
    To copy a path, right-click the folder or file in File Explorer and choose
    **Copy as path** (on Windows 10, hold Shift while right-clicking). The quotes
@@ -111,7 +117,9 @@ processing anything.
 When there's a new version, press **Alt+F11**, click in the module, select all
 the code (**Ctrl+A**), paste the new version over it, and save. Your paths stay
 on the Settings sheet, so there's nothing to re-enter. For a new fiscal year,
-just update the paths on the Settings sheet.
+change the Fiscal year number on the Settings sheet (if your paths use `{FY}`).
+If your Settings sheet was made before the Fiscal year setting existed, the
+macro adds that row at the bottom the next time it runs.
 
 ### Details
 
