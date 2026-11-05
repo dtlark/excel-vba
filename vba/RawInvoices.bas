@@ -139,7 +139,8 @@ Public Sub ProcessRawInvoices()
     If Len(duplicates) > 0 Then
         MsgBox "Stopped: found duplicates, so nothing was processed." & vbLf & duplicates & _
                vbLf & vbLf & "Take those files out of RAW, or remove the old copies " & _
-               "(from the Master List or the Done folder), then run again.", vbCritical, APP_TITLE
+               "(from the Master List, the Done folder or the Invoice folder), then run again.", _
+               vbCritical, APP_TITLE
         Exit Sub
     End If
     If Not FolderExists(doneFolder) Then MkDir doneFolder
@@ -197,7 +198,7 @@ Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workboo
     Dim wsRaw As Worksheet, ws As Worksheet
     Dim lo As ListObject, checkCol As ListColumn, errorCol As ListColumn, vCol As ListColumn
     Dim fc As FormatCondition
-    Dim rawName As String, tabName As String, tableName As String, postfixText As String
+    Dim rawName As String, tabName As String, tableName As String
     Dim invoicePath As String, missing As String, notFound As String, errorCell As String
     Dim msg As String
     Dim lastRow As Long, lastCol As Long, nRows As Long, nKept As Long
@@ -336,19 +337,13 @@ Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workboo
     If errorCol.Range.ColumnWidth < 8 Then errorCol.Range.ColumnWidth = 8
     If vCol.Range.ColumnWidth < 8 Then vCol.Range.ColumnWidth = 8
 
-    ' ----- 5. Save the Invoice workbook -----
-    ' "Invoice 123456 (ABC).xlsx"; no parentheses when nothing follows the tab name
-    postfixText = RawPostfix(rawName, tabName, note)
-    invoiceFile = "Invoice " & tabName
-    If Len(postfixText) > 0 Then
-        If Not (Left$(postfixText, 1) = "(" And Right$(postfixText, 1) = ")") Then
-            postfixText = "(" & postfixText & ")"                ' don't double up "(ABC)"
-        End If
-        invoiceFile = invoiceFile & " " & postfixText
-    End If
-    invoiceFile = invoiceFile & ".xlsx"
+    ' ----- 5. Save the Invoice workbook (never over an existing one) -----
+    invoiceFile = InvoiceFileName(rawName, tabName, note)
     invoicePath = invoiceFolder & "\" & invoiceFile
-    If FileExists(invoicePath) Then AddNote note, "replaced the existing " & invoiceFile
+    If FileExists(invoicePath) Then                         ' the duplicate check normally catches this
+        msg = "the Invoice folder already has " & invoiceFile & ", so nothing was changed for this file."
+        GoTo Cleanup
+    End If
     wbInv.SaveAs Filename:=invoicePath, FileFormat:=xlOpenXMLWorkbook
 
     ' ----- 6. Copy the tab to the end of the Master List, with an orange tab -----
@@ -871,41 +866,64 @@ Private Sub AppendToConsumables(ByVal consLo As ListObject, ByVal invLo As ListO
 End Sub
 
 ' Checks every RAW file before anything is changed. Returns one line per duplicate
-' ("" when there are none). A file is a duplicate when:
+' file, listing every reason ("" when there are none). A file is a duplicate when:
 '   - the Done folder already has a file with the same name,
 '   - the Master List already has its tab or its Inv_ table,
-'   - the Consumables table already has rows for its tab name, or
+'   - the Consumables table already has rows for its tab name,
+'   - the Invoice folder already has the Invoice file it would make, or
 '   - another RAW file in this run has the same tab name.
 Private Function FindDuplicates(ByRef files() As String, ByVal nFiles As Long, _
                                 ByVal master As Workbook, ByVal consLo As ListObject) As String
-    Dim i As Long, tabName As String, reason As String, seen As String
+    Dim i As Long, tabName As String, reasons As String, seen As String
+    Dim invoiceFile As String, ignored As String
 
     Application.ScreenUpdating = False
     For i = 1 To nFiles
         Application.StatusBar = APP_TITLE & ": checking for duplicates, file " & i & " of " & nFiles
-        reason = ""
-        tabName = ""
+        reasons = ""
         If FileExists(doneFolder & "\" & files(i)) Then
-            reason = "the Done folder already has a file with this name"
-        ElseIf Not IsWorkbookOpen(files(i)) Then            ' open files get skipped later anyway
-            tabName = RawTabName(rawFolder & "\" & files(i))
+            AddNote reasons, "the Done folder already has a file with this name"
         End If
-        If Len(tabName) > 0 Then
+        tabName = ""
+        If Not IsWorkbookOpen(files(i)) Then tabName = RawTabName(rawFolder & "\" & files(i))
+        If Len(tabName) > 0 Then                            ' (open files get skipped later anyway)
             If SheetExists(master, tabName) Then
-                reason = "the Master List already has a tab named " & tabName
+                AddNote reasons, "the Master List already has a tab named " & tabName
             ElseIf TableExists(master, TableNameFor(tabName)) Then
-                reason = "the Master List already has a table named " & TableNameFor(tabName)
-            ElseIf ConsumablesHas(consLo, tabName) Then
-                reason = "the " & CONSUMABLES_TABLE & " table already has rows for " & tabName
-            ElseIf InStr(1, seen, "|" & tabName & "|", vbTextCompare) > 0 Then
-                reason = "another file in RAW is also tab " & tabName
+                AddNote reasons, "the Master List already has a table named " & TableNameFor(tabName)
+            End If
+            If ConsumablesHas(consLo, tabName) Then
+                AddNote reasons, "the " & CONSUMABLES_TABLE & " table already has rows for " & tabName
+            End If
+            invoiceFile = InvoiceFileName(files(i), tabName, ignored)
+            If FileExists(invoiceFolder & "\" & invoiceFile) Then
+                AddNote reasons, "the Invoice folder already has " & invoiceFile
+            End If
+            If InStr(1, seen, "|" & tabName & "|", vbTextCompare) > 0 Then
+                AddNote reasons, "another file in RAW is also tab " & tabName
             End If
             seen = seen & "|" & tabName & "|"
         End If
-        If Len(reason) > 0 Then FindDuplicates = FindDuplicates & vbLf & "  " & files(i) & ": " & reason
+        If Len(reasons) > 0 Then FindDuplicates = FindDuplicates & vbLf & "  " & files(i) & ": " & reasons
     Next i
     Application.StatusBar = False
     Application.ScreenUpdating = True
+End Function
+
+' "Invoice 123456 (ABC).xlsx" from the RAW file name and its tab name. No parentheses
+' when nothing follows the tab name in the RAW file name.
+Private Function InvoiceFileName(ByVal rawName As String, ByVal tabName As String, _
+                                 ByRef note As String) As String
+    Dim postfixText As String
+    postfixText = RawPostfix(rawName, tabName, note)
+    InvoiceFileName = "Invoice " & tabName
+    If Len(postfixText) > 0 Then
+        If Not (Left$(postfixText, 1) = "(" And Right$(postfixText, 1) = ")") Then
+            postfixText = "(" & postfixText & ")"           ' don't double up "(ABC)"
+        End If
+        InvoiceFileName = InvoiceFileName & " " & postfixText
+    End If
+    InvoiceFileName = InvoiceFileName & ".xlsx"
 End Function
 
 ' The name of a RAW file's tab, or "" if the file can't be opened.

@@ -90,15 +90,17 @@ file.
 ### Duplicates stop the run
 
 Before changing anything, the macro checks every file in RAW. If any of them is
-a duplicate, it stops with an error that lists them, and nothing in that run is
-processed. A file is a duplicate when:
+a duplicate, it stops with an error that lists them, with every reason for each,
+and nothing in that run is processed. A file is a duplicate when:
 
 - the Done folder already has a file with the same name,
 - the Master List already has its tab, or its `Inv_` table,
-- the Consumables table already has rows with its tab name in the 4th column, or
+- the Consumables table already has rows with its tab name in the 4th column,
+- the Invoice folder already has the Invoice file it would make, or
 - another file in RAW has the same tab name.
 
-Take those files out of RAW (or remove the old copies), then run again.
+The macro never overwrites an existing Invoice file. Take those files out of
+RAW (or remove the old copies), then run again.
 
 ### When a file is skipped
 
