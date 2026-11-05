@@ -588,18 +588,14 @@ End Function
 ' and returns how many cells it changed. Only those cells are rewritten, so any other
 ' text is left exactly as it was.
 Private Function ConvertTextNumbers(ByVal rng As Range) As Long
-    Dim v As Variant, r As Long, c As Long, n As Double, zeroFormat As String
+    Dim v As Variant, r As Long, c As Long, n As Double
     v = ValuesOf(rng)
     For r = 1 To UBound(v, 1)
         For c = 1 To UBound(v, 2)
             If VarType(v(r, c)) = vbString Then
-                If TextToNumber(CStr(v(r, c)), n, zeroFormat) Then
+                If TextToNumber(CStr(v(r, c)), n) Then
                     With rng.Cells(r, c)
-                        If Len(zeroFormat) > 0 Then
-                            .NumberFormat = zeroFormat              ' "00123" keeps showing its zeros
-                        ElseIf .NumberFormat = "@" Then
-                            .NumberFormat = "General"               ' Text format would keep it text
-                        End If
+                        If .NumberFormat = "@" Then .NumberFormat = "General"   ' Text format keeps text
                         .Value = n
                     End With
                     ConvertTextNumbers = ConvertTextNumbers + 1
@@ -611,16 +607,13 @@ End Function
 
 ' True when s is a number written as text, and puts the number in result. Handles
 ' spaces (also tabs, line breaks and invisible spaces), a $ sign, commas between
-' thousands, and negatives written as -12.50, 12.50- or (12.50). Whole numbers with
-' leading zeros, like "00123", become numbers too; zeroFormat is then set (to "00000")
-' so they still show their zeros. Stays text: more than 15 digits (too long for Excel
+' thousands, and negatives written as -12.50, 12.50- or (12.50). Leading zeros are
+' dropped: "00123" becomes 123. Stays text: more than 15 digits (too long for Excel
 ' to hold exactly), dates, percents and anything else.
-Private Function TextToNumber(ByVal s As String, ByRef result As Double, _
-                              ByRef zeroFormat As String) As Boolean
+Private Function TextToNumber(ByVal s As String, ByRef result As Double) As Boolean
     Dim negative As Boolean, intPart As String, fracPart As String, dotPos As Long
     Dim groups As Variant, g As Long
 
-    zeroFormat = ""
     s = Replace(s, vbTab, " ")
     s = Replace(s, vbCr, " ")
     s = Replace(s, vbLf, " ")
@@ -663,10 +656,6 @@ Private Function TextToNumber(ByVal s As String, ByRef result As Double, _
     End If
     If Len(intPart) + Len(fracPart) = 0 Then Exit Function
     If Len(intPart) + Len(fracPart) > 15 Then Exit Function                 ' too long for Excel
-    If Len(intPart) > 1 And Left$(intPart, 1) = "0" And Len(fracPart) = 0 And dotPos = 0 _
-       And Not negative And InStr(s, ",") = 0 Then
-        zeroFormat = String$(Len(intPart), "0")             ' "00123" -> 123 shown as 00123
-    End If
 
     result = Val(intPart & "." & fracPart)                  ' Val always reads "." as the decimal point
     If negative Then result = -result

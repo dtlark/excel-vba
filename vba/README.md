@@ -133,10 +133,9 @@ macro adds that row at the bottom the next time it runs.
   `Invoice 123456.xlsx`.
 - **Numbers stored as text:** text like `12.50`, `1,234`, `$12.50`, `-12.50`,
   `12.50-` or `(12.50)` becomes a real number, in every column, even with
-  stray tabs, line breaks or invisible spaces around it. Whole numbers with
-  leading zeros, like `00123`, become numbers too, formatted so they still show
-  their zeros. Left as text on purpose: anything over 15 digits (too long for
-  Excel to store exactly), dates, and percents.
+  stray tabs, line breaks or invisible spaces around it. Leading zeros are
+  dropped: `00123` becomes `123`. Left as text on purpose: anything over 15
+  digits (too long for Excel to store exactly), dates, and percents.
 - **ERROR check:** AMOUNT and Check Number are compared to 6 decimal places, so
   computer rounding noise (like 0.00000000000001) isn't flagged. Any real
   difference is, even a fraction of a cent.
