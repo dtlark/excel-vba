@@ -136,8 +136,7 @@ macro adds that row at the bottom the next time it runs.
   stray tabs, line breaks or invisible spaces around it. Whole numbers with
   leading zeros, like `00123`, become numbers too, formatted so they still show
   their zeros. Left as text on purpose: anything over 15 digits (too long for
-  Excel to store exactly), dates, and percents. The message at the end says how
-  many cells were converted.
+  Excel to store exactly), dates, and percents.
 - **ERROR check:** AMOUNT and Check Number are compared to 6 decimal places, so
   computer rounding noise (like 0.00000000000001) isn't flagged. Any real
   difference is, even a fraction of a cent.

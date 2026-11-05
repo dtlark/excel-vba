@@ -203,7 +203,7 @@ Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workboo
     Dim msg As String
     Dim lastRow As Long, lastCol As Long, nRows As Long, nKept As Long
     Dim colShipped As Long, colPrice As Long, colTax As Long, colFreight As Long, colAmount As Long
-    Dim colOrdered As Long, nConverted As Long
+    Dim colOrdered As Long
 
     On Error GoTo Failed
     Application.DisplayAlerts = False                       ' no "replace this file?" prompts
@@ -265,8 +265,7 @@ Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workboo
         GoTo Cleanup
     End If
     lastRow = 3 + nKept
-    nConverted = ConvertTextNumbers(ws.Range(ws.Cells(4, 1), ws.Cells(lastRow, lastCol)))
-    If nConverted > 0 Then AddNote note, nConverted & " number(s) stored as text became real numbers"
+    ConvertTextNumbers ws.Range(ws.Cells(4, 1), ws.Cells(lastRow, lastCol))   ' quietly, no note
 
     colShipped = FindHeader(ws, lastCol, H_SHIPPED, missing)
     colPrice = FindHeader(ws, lastCol, H_PRICE, missing)
