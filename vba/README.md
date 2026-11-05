@@ -17,7 +17,7 @@ For each Excel file in the RAW folder, the `ProcessRawInvoices` macro:
 3. Puts `=SUBTOTAL(9, Inv_<Tab Name>[AMOUNT])` on row 2 above AMOUNT.
    Formats SHIPPED and ORDER as **Number** (2 decimals), and PRICE/UNIT, TAX,
    FREIGHT, AMOUNT, Check Number, V and that subtotal as **Accounting**.
-4. Saves it as `Invoice <Tab Name> <Postfix>.xlsx` in the Invoice folder.
+4. Saves it as `Invoice <Tab Name> (<Postfix>).xlsx` in the Invoice folder.
 5. Copies the tab to the end of the Master List.
 6. Moves the RAW file into the Done folder.
 
@@ -90,9 +90,10 @@ just update the paths on the Settings sheet.
 
 ### Details
 
-- **Invoice file name:** the part of the RAW file name after the tab name,
-  without leading spaces, `_` or `-`. `123456 Oct.xlsx` and `123456 - Oct.xlsx`
-  both become `Invoice 123456 Oct.xlsx`, and `123456.xlsx` becomes
+- **Invoice file name:** the part of the RAW file name after the tab name goes
+  in parentheses, without leading spaces, `_` or `-`. `123456 ABC.xlsx` and
+  `123456 - ABC.xlsx` both become `Invoice 123456 (ABC).xlsx`. If nothing comes
+  after the tab name, there are no parentheses: `123456.xlsx` becomes
   `Invoice 123456.xlsx`.
 - **ERROR check:** AMOUNT and Check Number are compared to 6 decimal places, so
   computer rounding noise (like 0.00000000000001) isn't flagged. Any real

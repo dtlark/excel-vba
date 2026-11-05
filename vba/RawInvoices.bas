@@ -14,8 +14,8 @@ Option Explicit
 '         " " (blank)   = ERROR when AMOUNT isn't equal to Check Number
 '         V             = Check Number - AMOUNT on ERROR rows
 '    4. Puts =SUBTOTAL(9,Inv_<Tab Name>[AMOUNT]) on row 2 above AMOUNT.
-'    5. Saves it as "Invoice <Tab Name> <rest of the RAW file name>.xlsx"
-'       in the Invoice folder.
+'    5. Saves it as "Invoice <Tab Name> (<rest of the RAW file name>).xlsx"
+'       in the Invoice folder, e.g. "Invoice 123456 (ABC).xlsx".
 '    6. Copies the tab to the end of the Master List.
 '    7. Moves the RAW file into the Done folder.
 '
@@ -282,9 +282,15 @@ Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workboo
     If vCol.Range.ColumnWidth < 8 Then vCol.Range.ColumnWidth = 8
 
     ' ----- 5. Save the Invoice workbook -----
+    ' "Invoice 123456 (ABC).xlsx"; no parentheses when nothing follows the tab name
     postfixText = RawPostfix(rawName, tabName, note)
     invoiceFile = "Invoice " & tabName
-    If Len(postfixText) > 0 Then invoiceFile = invoiceFile & " " & postfixText
+    If Len(postfixText) > 0 Then
+        If Not (Left$(postfixText, 1) = "(" And Right$(postfixText, 1) = ")") Then
+            postfixText = "(" & postfixText & ")"                ' don't double up "(ABC)"
+        End If
+        invoiceFile = invoiceFile & " " & postfixText
+    End If
     invoiceFile = invoiceFile & ".xlsx"
     invoicePath = invoiceFolder & "\" & invoiceFile
     If FileExists(invoicePath) Then AddNote note, "replaced the existing " & invoiceFile
