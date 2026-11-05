@@ -15,6 +15,8 @@ For each Excel file in the RAW folder, the `ProcessRawInvoices` macro:
    (set by `TABLE_STYLE` near the top of the code), adds the **Check Number**, blank and
    **V** columns with orange headers, and highlights ERROR cells in red.
 3. Puts `=SUBTOTAL(9, Inv_<Tab Name>[AMOUNT])` on row 2 above AMOUNT.
+   Formats SHIPPED and ORDER as **Number** (2 decimals), and PRICE/UNIT, TAX,
+   FREIGHT, AMOUNT, Check Number, V and that subtotal as **Accounting**.
 4. Saves it as `Invoice <Tab Name> <Postfix>.xlsx` in the Invoice folder.
 5. Copies the tab to the end of the Master List.
 6. Moves the RAW file into the Done folder.

@@ -43,10 +43,16 @@ Private Const H_PRICE As String = "PRICE/UNIT"
 Private Const H_TAX As String = "TAX"
 Private Const H_FREIGHT As String = "FREIGHT|FREGHT"
 Private Const H_AMOUNT As String = "AMOUNT"
+' ORDER is only formatted, not used in a formula, so a file without it isn't skipped
+Private Const H_ORDER As String = "ORDER"
 
 ' Style for the Inv_ table: "White, Table Style Medium 1" in Excel's Table Design gallery.
 ' Other styles follow the same pattern, e.g. "TableStyleMedium2" or "TableStyleLight9".
 Private Const TABLE_STYLE As String = "TableStyleMedium1"
+
+' Number formats: Excel's "Number" with 2 decimals, and "Accounting" with a $ sign
+Private Const FMT_NUMBER As String = "0.00"
+Private Const FMT_ACCOUNTING As String = "_($* #,##0.00_);_($* (#,##0.00);_($* ""-""??_);_(@_)"
 
 Private Const ORANGE As Long = 3305961        ' #E97132 = RGB(233, 113, 50)
 Private Const ERROR_TEXT As Long = 393372     ' #9C0006 = RGB(156, 0, 6)
@@ -151,10 +157,11 @@ Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workboo
     Dim lo As ListObject, checkCol As ListColumn, errorCol As ListColumn, vCol As ListColumn
     Dim fc As FormatCondition
     Dim rawName As String, tabName As String, tableName As String, postfixText As String
-    Dim invoicePath As String, missing As String, amountFormat As String, errorCell As String
+    Dim invoicePath As String, missing As String, notFound As String, errorCell As String
     Dim msg As String
     Dim lastRow As Long, lastCol As Long, nRows As Long, nKept As Long
     Dim colShipped As Long, colPrice As Long, colTax As Long, colFreight As Long, colAmount As Long
+    Dim colOrder As Long
 
     On Error GoTo Failed
     Application.DisplayAlerts = False                       ' no "replace this file?" prompts
@@ -215,6 +222,7 @@ Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workboo
         msg = "row 1 has no " & missing & " column."
         GoTo Cleanup
     End If
+    colOrder = FindHeader(ws, lastCol, H_ORDER, notFound)    ' optional, so no skip if missing
 
     ' ----- 3. Make the table and add the three new columns -----
     ws.Cells(3, lastCol + 1).Value = "Check Number"
@@ -248,11 +256,22 @@ Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workboo
     ws.Cells(2, colAmount).Formula = "=SUBTOTAL(9," & lo.Name & "[" & _
         EscapeColumnName(lo.ListColumns(colAmount).Name) & "])"
 
-    ' Formatting: money format like AMOUNT, orange headers, red ERROR cells
-    amountFormat = lo.ListColumns(colAmount).DataBodyRange.Cells(1, 1).NumberFormat
-    ws.Cells(2, colAmount).NumberFormat = amountFormat
-    checkCol.DataBodyRange.NumberFormat = amountFormat
-    vCol.DataBodyRange.NumberFormat = amountFormat
+    ' Number formats: Number for the quantities, Accounting for the money
+    lo.ListColumns(colShipped).DataBodyRange.NumberFormat = FMT_NUMBER
+    If colOrder > 0 Then
+        lo.ListColumns(colOrder).DataBodyRange.NumberFormat = FMT_NUMBER
+    Else
+        AddNote note, "no " & notFound & " column, so it wasn't formatted"
+    End If
+    lo.ListColumns(colPrice).DataBodyRange.NumberFormat = FMT_ACCOUNTING
+    lo.ListColumns(colTax).DataBodyRange.NumberFormat = FMT_ACCOUNTING
+    lo.ListColumns(colFreight).DataBodyRange.NumberFormat = FMT_ACCOUNTING
+    lo.ListColumns(colAmount).DataBodyRange.NumberFormat = FMT_ACCOUNTING
+    checkCol.DataBodyRange.NumberFormat = FMT_ACCOUNTING
+    vCol.DataBodyRange.NumberFormat = FMT_ACCOUNTING
+    ws.Cells(2, colAmount).NumberFormat = FMT_ACCOUNTING     ' the SUBTOTAL above the table
+
+    ' Orange headers, red ERROR cells
     ws.Range(ws.Cells(3, lastCol + 1), ws.Cells(3, lastCol + 3)).Interior.Color = ORANGE
     Set fc = errorCol.DataBodyRange.FormatConditions.Add( _
         Type:=xlCellValue, Operator:=xlEqual, Formula1:="=""ERROR""")
