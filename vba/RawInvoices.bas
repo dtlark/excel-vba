@@ -5,9 +5,9 @@ Option Explicit
 '
 '  For every Excel file in the RAW folder (in file name order):
 '    1. Opens it. Its tab name (e.g. 123456) is the <Tab Name>.
-'    2. Copies the header row and data rows into a new one-tab workbook,
-'       header on row 3, leaving out rows that contain "subtotal for" or
-'       "grand total", and empty rows.
+'    2. Copies the header row and data rows (values and number formats only)
+'       into a new one-tab workbook, header on row 3, leaving out rows that
+'       contain "subtotal for" or "grand total", and empty rows.
 '    3. Makes it a table named Inv_<Tab Name> and adds three columns
 '       with orange headers:
 '         Check Number  = SHIPPED x PRICE/UNIT + TAX + FREIGHT
@@ -199,7 +199,11 @@ Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workboo
     Set wbInv = Workbooks.Add(xlWBATWorksheet)
     Set ws = wbInv.Worksheets(1)
     ws.Name = tabName
-    wsRaw.Range(wsRaw.Cells(1, 1), wsRaw.Cells(lastRow, lastCol)).Copy Destination:=ws.Range("A3")
+    ' Values and number formats only (dates stay dates). The vendor's colors, fonts and
+    ' borders stay behind, so they don't cover up the table style.
+    wsRaw.Range(wsRaw.Cells(1, 1), wsRaw.Cells(lastRow, lastCol)).Copy
+    ws.Range("A3").PasteSpecial Paste:=xlPasteValuesAndNumberFormats
+    Application.CutCopyMode = False
     wbRaw.Close SaveChanges:=False
     Set wbRaw = Nothing
 
@@ -219,7 +223,7 @@ Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workboo
     colFreight = FindHeader(ws, lastCol, H_FREIGHT, missing)
     colAmount = FindHeader(ws, lastCol, H_AMOUNT, missing)
     If Len(missing) > 0 Then
-        msg = "row 1 has no " & missing & " column."
+        msg = "row 1 has no " & missing & " column. Row 1 has: " & HeaderList(ws, lastCol)
         GoTo Cleanup
     End If
     colOrder = FindHeader(ws, lastCol, H_ORDER, notFound)    ' optional, so no skip if missing
@@ -261,7 +265,8 @@ Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workboo
     If colOrder > 0 Then
         lo.ListColumns(colOrder).DataBodyRange.NumberFormat = FMT_NUMBER
     Else
-        AddNote note, "no " & notFound & " column, so it wasn't formatted"
+        AddNote note, "no " & notFound & " column, so it wasn't formatted. Row 1 has: " & _
+                      HeaderList(ws, lastCol)
     End If
     lo.ListColumns(colPrice).DataBodyRange.NumberFormat = FMT_ACCOUNTING
     lo.ListColumns(colTax).DataBodyRange.NumberFormat = FMT_ACCOUNTING
@@ -517,7 +522,8 @@ Private Function ValuesOf(ByVal rng As Range) As Variant
     End If
 End Function
 
-' Column number of a header on row 3, ignoring capitals and extra spaces.
+' Column number of a header on row 3. Capitals, extra spaces, non-breaking spaces and
+' line breaks inside the header don't matter.
 ' "spellings" lists every accepted spelling, separated by |, e.g. "FREIGHT|FREGHT".
 ' Returns 0 and adds the first spelling to "missing" when none are there.
 Private Function FindHeader(ByVal ws As Worksheet, ByVal lastCol As Long, ByVal spellings As String, _
@@ -527,7 +533,7 @@ Private Function FindHeader(ByVal ws As Worksheet, ByVal lastCol As Long, ByVal 
         For c = 1 To lastCol
             v = ws.Cells(3, c).Value
             If Not IsError(v) Then
-                If StrComp(Trim$(CStr(v)), Trim$(CStr(spelling)), vbTextCompare) = 0 Then
+                If CleanHeader(CStr(v)) = CleanHeader(CStr(spelling)) Then
                     FindHeader = c
                     Exit Function
                 End If
@@ -536,6 +542,33 @@ Private Function FindHeader(ByVal ws As Worksheet, ByVal lastCol As Long, ByVal 
     Next spelling
     If Len(missing) > 0 Then missing = missing & ", "
     missing = missing & Split(spellings, "|")(0)
+End Function
+
+' Header text in capitals, with line breaks, tabs and non-breaking spaces turned into
+' plain spaces, and no doubled, leading or trailing spaces.
+Private Function CleanHeader(ByVal s As String) As String
+    s = Replace(s, vbCr, " ")
+    s = Replace(s, vbLf, " ")
+    s = Replace(s, vbTab, " ")
+    s = Replace(s, Chr(160), " ")                           ' non-breaking space
+    Do While InStr(s, "  ") > 0
+        s = Replace(s, "  ", " ")
+    Loop
+    CleanHeader = UCase$(Trim$(s))
+End Function
+
+' The headers on row 3 for messages, like "ITEM, DESCRIPTION, SHIPPED, ..."
+Private Function HeaderList(ByVal ws As Worksheet, ByVal lastCol As Long) As String
+    Dim c As Long, v As Variant
+    For c = 1 To lastCol
+        v = ws.Cells(3, c).Value
+        If c > 1 Then HeaderList = HeaderList & ", "
+        If IsError(v) Then
+            HeaderList = HeaderList & "(error)"
+        Else
+            HeaderList = HeaderList & CleanHeader(CStr(v))
+        End If
+    Next c
 End Function
 
 ' A this-row reference to a table column, like [@[PRICE/UNIT]]

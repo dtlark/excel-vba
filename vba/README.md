@@ -11,6 +11,8 @@ For each Excel file in the RAW folder, the `ProcessRawInvoices` macro:
 
 1. Copies the header and data rows to a new workbook, with the header on row 3.
    Rows containing "subtotal for" or "grand total", and empty rows, are left out.
+   Only values and number formats are copied, so the vendor's colors and fonts
+   don't cover up the table style.
 2. Makes it a table named `Inv_<Tab Name>` in **White, Table Style Medium 1**
    (set by `TABLE_STYLE` near the top of the code), adds the **Check Number**, blank and
    **V** columns with orange headers, and highlights ERROR cells in red.
@@ -98,9 +100,11 @@ just update the paths on the Settings sheet.
 - **ERROR check:** AMOUNT and Check Number are compared to 6 decimal places, so
   computer rounding noise (like 0.00000000000001) isn't flagged. Any real
   difference is, even a fraction of a cent.
-- **Columns are found by header name**, ignoring capitals and extra spaces, so
-  it still works if the vendor moves a column. The names are near the top of
-  the code. To accept another spelling, add it after a `|` on that column's line:
+- **Columns are found by header name**, ignoring capitals, extra spaces,
+  non-breaking spaces and line breaks, so it still works if the vendor moves a
+  column. If a column can't be found, the message lists the headers row 1 does
+  have. The names are near the top of the code. To accept another spelling,
+  add it after a `|` on that column's line:
 
   ```vb
   Private Const H_FREIGHT As String = "FREIGHT|FREGHT"
