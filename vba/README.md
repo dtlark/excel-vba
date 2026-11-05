@@ -17,16 +17,20 @@ For each Excel file in the RAW folder, the `ProcessRawInvoices` macro:
    (set by `TABLE_STYLE` near the top of the code), adds the **Check Number**, blank and
    **V** columns with orange headers, and highlights ERROR cells in red.
 3. Puts `=SUBTOTAL(9, Inv_<Tab Name>[AMOUNT])` on row 2 above AMOUNT.
-   Formats SHIPPED and ORDER as **Number** (2 decimals), and PRICE/UNIT, TAX,
+   Formats SHIPPED and ORDERED as **Number** (2 decimals), and PRICE/UNIT, TAX,
    FREIGHT, AMOUNT, Check Number, V and that subtotal as **Accounting**.
 4. Saves it as `Invoice <Tab Name> (<Postfix>).xlsx` in the Invoice folder.
 5. Copies the tab to the end of the Master List.
-6. Moves the RAW file into the Done folder.
+6. Adds the table's data rows to the bottom of the Master List's **Consumables**
+   table (on the Consolidated Consumables tab). Only the vendor's columns go in,
+   not Check Number, the blank column or V. The tab name goes in the table's 4th
+   column, and the vendor's columns start in its 5th.
+7. Moves the RAW file into the Done folder.
 
 You only need Excel open with the macro workbook. The macro opens and closes the
 RAW and Invoice files itself. The Master List can be open or closed: if it's
 closed, the macro opens it. The macro never saves the Master List, so you can
-check the new tabs first.
+check the new tabs and Consumables rows first.
 
 ### Set up (once)
 
@@ -61,7 +65,8 @@ check the new tabs first.
    the files it found and asks before starting.
 4. Read the message at the end. Any file that couldn't be processed is still in
    RAW, with the reason.
-5. Check the new tabs at the end of the Master List, then save it.
+5. Check the new tabs at the end of the Master List and the new rows at the
+   bottom of the Consumables table, then save it.
 
 ### First run
 
@@ -71,8 +76,9 @@ Test with one file before trusting it with a batch:
 2. Leave just one file in RAW and run the macro.
 3. Compare the Invoice file and the new Master List tab with what you'd make by hand.
 
-To undo a run: close the Master List without saving, move the RAW file back out
-of `Done`, and delete the Invoice file.
+To undo a run: close the Master List without saving (that also undoes the
+Consumables rows), move the RAW file back out of `Done`, and delete the Invoice
+file.
 
 ### When a file is skipped
 
@@ -80,8 +86,12 @@ The file stays in RAW, and the message at the end says why:
 
 - The Master List already has a tab (or table) with that name.
 - Row 1 is missing SHIPPED, PRICE/UNIT, TAX, FREIGHT (or FREGHT) or AMOUNT.
+- The Consumables table doesn't have enough columns for the file's data.
 - The file is open in Excel.
 - There are no data rows.
+
+If the Master List has no table named Consumables, the macro stops before
+processing anything.
 
 ### Updating the macro
 

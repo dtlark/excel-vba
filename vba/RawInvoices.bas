@@ -17,11 +17,15 @@ Option Explicit
 '    5. Saves it as "Invoice <Tab Name> (<rest of the RAW file name>).xlsx"
 '       in the Invoice folder, e.g. "Invoice 123456 (ABC).xlsx".
 '    6. Copies the tab to the end of the Master List.
-'    7. Moves the RAW file into the Done folder.
+'    7. Adds the table's data rows (the vendor's columns, not the three added
+'       ones) to the bottom of the Master List's Consumables table, on the
+'       Consolidated Consumables tab: the tab name in the table's 4th column
+'       and the vendor's columns from its 5th column on.
+'    8. Moves the RAW file into the Done folder.
 '
 '  A file that can't be processed stays in RAW, and the message at the
 '  end says why. The Master List is NOT saved, so you can check the new
-'  tabs first and then save it yourself.
+'  tabs and Consumables rows first and then save it yourself.
 '
 '  The folders and the Master List file go on a sheet named "Settings"
 '  in the workbook that holds this macro. The first run adds that sheet.
@@ -43,8 +47,14 @@ Private Const H_PRICE As String = "PRICE/UNIT"
 Private Const H_TAX As String = "TAX"
 Private Const H_FREIGHT As String = "FREIGHT|FREGHT"
 Private Const H_AMOUNT As String = "AMOUNT"
-' ORDER is only formatted, not used in a formula, so a file without it isn't skipped
-Private Const H_ORDER As String = "ORDER"
+' ORDERED is only formatted, not used in a formula, so a file without it isn't skipped
+Private Const H_ORDERED As String = "ORDERED"
+
+' The Master List table that collects every invoice's data rows, and where they go in it
+Private Const CONSUMABLES_TABLE As String = "Consumables"
+Private Const CONSUMABLES_TAB As String = "Consolidated Consumables"   ' only used in messages
+Private Const CONS_TAB_NAME_COLUMN As Long = 4        ' the tab name goes in the 4th column
+Private Const CONS_FIRST_DATA_COLUMN As Long = 5      ' the vendor's columns start in the 5th
 
 ' Style for the Inv_ table: "White, Table Style Medium 1" in Excel's Table Design gallery.
 ' Other styles follow the same pattern, e.g. "TableStyleMedium2" or "TableStyleLight9".
@@ -66,10 +76,10 @@ Private masterPath As String
 
 Public Sub ProcessRawInvoices()
     Dim files() As String, nFiles As Long, i As Long
-    Dim master As Workbook
+    Dim master As Workbook, consLo As ListObject
     Dim result As String, note As String, invoiceFile As String
     Dim fileList As String, doneList As String, skipList As String, summary As String
-    Dim nDone As Long, nSkipped As Long
+    Dim nDone As Long, nSkipped As Long, oldCalc As Long, calcChanged As Boolean
 
     On Error GoTo Failed
     If Not LoadSettings() Then Exit Sub                     ' LoadSettings already said why
@@ -109,14 +119,23 @@ Public Sub ProcessRawInvoices()
                "Unprotect it (Review > Protect Workbook) and run again.", vbExclamation, APP_TITLE
         Exit Sub
     End If
+    Set consLo = FindTable(master, CONSUMABLES_TABLE)
+    If consLo Is Nothing Then
+        MsgBox master.Name & " has no table named " & CONSUMABLES_TABLE & " (it should be on the " & _
+               CONSUMABLES_TAB & " tab), so nothing was processed.", vbExclamation, APP_TITLE
+        Exit Sub
+    End If
     If Not FolderExists(doneFolder) Then MkDir doneFolder
 
     Application.ScreenUpdating = False
+    oldCalc = Application.Calculation                       ' manual while working, for speed
+    Application.Calculation = xlCalculationManual
+    calcChanged = True
     For i = 1 To nFiles
         Application.StatusBar = APP_TITLE & ": file " & i & " of " & nFiles & ": " & files(i)
         invoiceFile = ""
         note = ""
-        result = ProcessOneFile(rawFolder & "\" & files(i), master, invoiceFile, note)
+        result = ProcessOneFile(rawFolder & "\" & files(i), master, consLo, invoiceFile, note)
         If Len(result) = 0 Then
             nDone = nDone + 1
             doneList = doneList & vbLf & "  " & files(i) & "  ->  " & invoiceFile
@@ -126,6 +145,8 @@ Public Sub ProcessRawInvoices()
             skipList = skipList & vbLf & "  " & files(i) & ": " & result
         End If
     Next i
+    Application.Calculation = oldCalc
+    calcChanged = False
     Application.StatusBar = False
     Application.ScreenUpdating = True
     master.Activate
@@ -135,12 +156,14 @@ Public Sub ProcessRawInvoices()
         summary = summary & vbLf & vbLf & "Left in RAW: " & nSkipped & " file(s)." & skipList
     End If
     If nDone > 0 Then
-        summary = summary & vbLf & vbLf & "The Master List isn't saved yet. Check the new tabs, then save it."
+        summary = summary & vbLf & vbLf & "The Master List isn't saved yet. Check the new tabs and " & _
+                  "the rows added to " & CONSUMABLES_TABLE & ", then save it."
     End If
     MsgBox summary, IIf(nSkipped > 0, vbExclamation, vbInformation), APP_TITLE
     Exit Sub
 
 Failed:
+    If calcChanged Then Application.Calculation = oldCalc
     Application.StatusBar = False
     Application.ScreenUpdating = True
     Application.DisplayAlerts = True
@@ -151,6 +174,7 @@ End Sub
 ' Processes one RAW file. Returns "" when it worked, otherwise why it was skipped.
 ' invoiceFile gets the saved file's name; note gets anything worth mentioning.
 Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workbook, _
+                                ByVal consLo As ListObject, _
                                 ByRef invoiceFile As String, ByRef note As String) As String
     Dim wbRaw As Workbook, wbInv As Workbook
     Dim wsRaw As Worksheet, ws As Worksheet
@@ -161,7 +185,7 @@ Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workboo
     Dim msg As String
     Dim lastRow As Long, lastCol As Long, nRows As Long, nKept As Long
     Dim colShipped As Long, colPrice As Long, colTax As Long, colFreight As Long, colAmount As Long
-    Dim colOrder As Long
+    Dim colOrdered As Long
 
     On Error GoTo Failed
     Application.DisplayAlerts = False                       ' no "replace this file?" prompts
@@ -192,6 +216,13 @@ Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workboo
     lastRow = LastUsedRow(wsRaw)
     If lastRow < 2 Then
         msg = "there's nothing under the header row."
+        GoTo Cleanup
+    End If
+    If consLo.ListColumns.Count < CONS_FIRST_DATA_COLUMN - 1 + lastCol Then
+        msg = "the " & CONSUMABLES_TABLE & " table has " & consLo.ListColumns.Count & _
+              " columns, but this file's " & lastCol & " columns need " & _
+              (CONS_FIRST_DATA_COLUMN - 1 + lastCol) & " (they start in its column " & _
+              CONS_FIRST_DATA_COLUMN & ")."
         GoTo Cleanup
     End If
 
@@ -226,7 +257,7 @@ Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workboo
         msg = "row 1 has no " & missing & " column. Row 1 has: " & HeaderList(ws, lastCol)
         GoTo Cleanup
     End If
-    colOrder = FindHeader(ws, lastCol, H_ORDER, notFound)    ' optional, so no skip if missing
+    colOrdered = FindHeader(ws, lastCol, H_ORDERED, notFound)  ' optional, so no skip if missing
 
     ' ----- 3. Make the table and add the three new columns -----
     ws.Cells(3, lastCol + 1).Value = "Check Number"
@@ -262,8 +293,8 @@ Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workboo
 
     ' Number formats: Number for the quantities, Accounting for the money
     lo.ListColumns(colShipped).DataBodyRange.NumberFormat = FMT_NUMBER
-    If colOrder > 0 Then
-        lo.ListColumns(colOrder).DataBodyRange.NumberFormat = FMT_NUMBER
+    If colOrdered > 0 Then
+        lo.ListColumns(colOrdered).DataBodyRange.NumberFormat = FMT_NUMBER
     Else
         AddNote note, "no " & notFound & " column, so it wasn't formatted. Row 1 has: " & _
                       HeaderList(ws, lastCol)
@@ -303,10 +334,13 @@ Private Function ProcessOneFile(ByVal rawPath As String, ByVal master As Workboo
 
     ' ----- 6. Copy the tab to the end of the Master List -----
     ws.Copy After:=master.Sheets(master.Sheets.Count)
+
+    ' ----- 7. Add the data rows to the bottom of the Consumables table -----
+    AppendToConsumables consLo, lo, lastCol, tabName
     wbInv.Close SaveChanges:=False
     Set wbInv = Nothing
 
-    ' ----- 7. Move the RAW file to Done -----
+    ' ----- 8. Move the RAW file to Done -----
     MoveToDone rawPath, rawName, note
 
 Cleanup:
@@ -664,16 +698,50 @@ Private Function SheetExists(ByVal wb As Workbook, ByVal sheetName As String) As
     Next sh
 End Function
 
-Private Function TableExists(ByVal wb As Workbook, ByVal tableName As String) As Boolean
+' Adds the invoice table's data rows (only its first nCols columns, the vendor's own)
+' to the bottom of the Consumables table: the tab name in its 4th column and the
+' vendor's columns from its 5th column on.
+Private Sub AppendToConsumables(ByVal consLo As ListObject, ByVal invLo As ListObject, _
+                                ByVal nCols As Long, ByVal tabName As String)
+    Dim nAdd As Long, firstNew As Long, reuseBlankRow As Boolean
+
+    nAdd = invLo.ListRows.Count
+    ' A table with no data yet usually has one empty row: fill that one first.
+    If consLo.ListRows.Count = 1 Then
+        reuseBlankRow = (Application.WorksheetFunction.CountA( _
+            consLo.DataBodyRange.Cells(1, CONS_TAB_NAME_COLUMN).Resize(1, nCols + 1)) = 0)
+    End If
+    If reuseBlankRow Then
+        firstNew = 1
+    Else
+        firstNew = consLo.ListRows.Count + 1
+    End If
+    Do While consLo.ListRows.Count < firstNew + nAdd - 1
+        consLo.ListRows.Add                                 ' formula columns fill in by themselves
+    Loop
+
+    invLo.DataBodyRange.Resize(nAdd, nCols).Copy
+    consLo.DataBodyRange.Cells(firstNew, CONS_FIRST_DATA_COLUMN).PasteSpecial _
+        Paste:=xlPasteValuesAndNumberFormats
+    Application.CutCopyMode = False
+    consLo.DataBodyRange.Cells(firstNew, CONS_TAB_NAME_COLUMN).Resize(nAdd, 1).Value = tabName
+End Sub
+
+' The table with this name anywhere in the workbook, or Nothing.
+Private Function FindTable(ByVal wb As Workbook, ByVal tableName As String) As ListObject
     Dim sh As Worksheet, tbl As ListObject
     For Each sh In wb.Worksheets
         For Each tbl In sh.ListObjects
             If StrComp(tbl.Name, tableName, vbTextCompare) = 0 Then
-                TableExists = True
+                Set FindTable = tbl
                 Exit Function
             End If
         Next tbl
     Next sh
+End Function
+
+Private Function TableExists(ByVal wb As Workbook, ByVal tableName As String) As Boolean
+    TableExists = Not FindTable(wb, tableName) Is Nothing
 End Function
 
 ' Last row with anything in it (0 if the sheet is empty). Includes hidden rows.
